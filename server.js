@@ -1,23 +1,15 @@
 const express = require('express');
-const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 
-// --- Inicialização do Servidor ---
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
-
-// Servir arquivos estáticos da pasta 'public' (criada no build)
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Rota principal
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/regras', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'regras.html'));
+const io = new Server(server, {
+    cors: {
+        origin: "*", // Permite conexão de qualquer origem (pode restringir ao seu domínio)
+        methods: ["GET", "POST"],
+        credentials: true
+    }
 });
 
 // --- Estado do Jogo (In-memory) ---
@@ -34,7 +26,7 @@ const gameState = {
     winner: null
 };
 
-// --- Baralhos de Cartas ---
+// --- Baralhos de Cartas (mesmos do original) ---
 const CARDS_BY_PHASE = {
     1: [
         { text: "O que esse código imprime?\n\ni = 0\nwhile i < 3:\n    print(i)\n    i += 1", answer: "0 1 2", type: "normal" },
@@ -243,7 +235,6 @@ function nextTurn() {
     };
 }
 
-// --- Socket.IO: Comunicação em Tempo Real ---
 io.on('connection', (socket) => {
     console.log(`[Socket] Cliente conectado: ${socket.id}`);
 
@@ -311,14 +302,21 @@ io.on('connection', (socket) => {
         io.emit('special-card-used', { playerId, result });
     });
 
+    socket.on('end-turn-manual', (playerId) => {
+        const playerIndex = gameState.players.indexOf(playerId);
+        if (playerIndex === gameState.currentPlayerIndex) {
+            const turnUpdate = nextTurn();
+            if (turnUpdate) io.emit('turn-update', turnUpdate);
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log(`[Socket] Cliente desconectado: ${socket.id}`);
     });
 });
 
-// --- Inicialização do Servidor ---
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
-    console.log(`📡 Socket.IO pronto para conexões.`);
+    console.log(`📡 Socket.IO pronto para conexões (CORS liberado).`);
 });
