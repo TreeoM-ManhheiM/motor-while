@@ -5,28 +5,13 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: {
-        origin: "*", // Permite conexão de qualquer origem (pode restringir ao seu domínio)
-        methods: ["GET", "POST"],
-        credentials: true
-    }
+    cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// --- Estado do Jogo (In-memory) ---
-const gameState = {
-    players: [],
-    currentPlayerIndex: 0,
-    boardSize: 28,
-    playersPositions: [],
-    playersSkipped: [],
-    playersSpecialCards: [],
-    deck: { 1: [], 2: [], 3: [], 4: [] },
-    specialDeck: [],
-    gameActive: false,
-    winner: null
-};
+// Estrutura de salas
+const rooms = new Map(); // roomId -> { players: { name: socketId }, readyStatus: { name: bool }, gameState: null ou objeto do jogo }
 
-// --- Baralhos de Cartas (mesmos do original) ---
+// === Baralhos (mesmo código anterior) ===
 const CARDS_BY_PHASE = {
     1: [
         { text: "O que esse código imprime?\n\ni = 0\nwhile i < 3:\n    print(i)\n    i += 1", answer: "0 1 2", type: "normal" },
@@ -89,97 +74,76 @@ function shuffleArray(arr) {
     return arr;
 }
 
-function resetAndShuffleDecks() {
-    for (let i = 1; i <= 4; i++) {
-        gameState.deck[i] = shuffleArray([...CARDS_BY_PHASE[i]]);
-    }
-    gameState.specialDeck = shuffleArray([...SPECIAL_CARDS]);
-    console.log("Decks reset and shuffled.");
-}
-
-function getCardForPhase(phase) {
-    const phaseDeck = gameState.deck[phase];
-    if (phaseDeck.length === 0) {
-        gameState.deck[phase] = shuffleArray([...CARDS_BY_PHASE[phase]]);
-        console.log(`Deck da fase ${phase} recarregado.`);
-    }
-    return gameState.deck[phase].pop();
-}
-
-function getSpecialCard() {
-    if (gameState.specialDeck.length === 0) {
-        gameState.specialDeck = shuffleArray([...SPECIAL_CARDS]);
-        console.log("Special deck recarregado.");
-    }
-    return gameState.specialDeck.pop();
-}
-
-function initializeGame(playersList) {
-    gameState.players = playersList;
-    gameState.currentPlayerIndex = 0;
-    gameState.playersPositions = new Array(playersList.length).fill(0);
-    gameState.playersSkipped = new Array(playersList.length).fill(false);
-    gameState.playersSpecialCards = playersList.map(() => ({ debug: 0, antiLoop: 0 }));
-    gameState.gameActive = true;
-    gameState.winner = null;
-    resetAndShuffleDecks();
-    console.log(`Jogo iniciado com ${playersList.length} jogadores: ${playersList.join(', ')}`);
-    return {
-        players: gameState.players,
-        positions: gameState.playersPositions,
-        currentPlayerIndex: gameState.currentPlayerIndex,
-        boardSize: gameState.boardSize
+function initializeGameState(roomId, playersNames) {
+    const players = playersNames;
+    const state = {
+        players: players,
+        currentPlayerIndex: 0,
+        boardSize: 28,
+        playersPositions: new Array(players.length).fill(0),
+        playersSkipped: new Array(players.length).fill(false),
+        playersSpecialCards: players.map(() => ({ debug: 0, antiLoop: 0 })),
+        deck: { 1: [], 2: [], 3: [], 4: [] },
+        specialDeck: [],
+        gameActive: true,
+        winner: null
     };
+    // Embaralhar decks
+    for (let i = 1; i <= 4; i++) {
+        state.deck[i] = shuffleArray([...CARDS_BY_PHASE[i]]);
+    }
+    state.specialDeck = shuffleArray([...SPECIAL_CARDS]);
+    return state;
 }
 
-function applySpecialCardEffect(playerId, cardType) {
-    const playerIndex = gameState.players.indexOf(playerId);
-    const specials = gameState.playersSpecialCards[playerIndex];
-    if (cardType === 'debug' && specials.debug > 0) {
-        specials.debug--;
-        return { success: true, effect: 'debug_used', message: 'Você usou um Debug!' };
-    } else if (cardType === 'antiLoop' && specials.antiLoop > 0) {
-        specials.antiLoop--;
-        return { success: true, effect: 'antiLoop_used', message: 'Você usou um Anti-Loop!' };
+function getCardForPhase(state, phase) {
+    let deck = state.deck[phase];
+    if (deck.length === 0) {
+        state.deck[phase] = shuffleArray([...CARDS_BY_PHASE[phase]]);
+        deck = state.deck[phase];
     }
-    return { success: false, message: 'Você não possui esta carta especial.' };
+    return deck.pop();
 }
 
-function movePlayer(playerId, diceRoll, correctAnswer, isSpecialCardAdvance = false) {
-    const playerIndex = gameState.players.indexOf(playerId);
-    if (playerIndex === -1) return { success: false, message: "Jogador não encontrado." };
-    if (!gameState.gameActive) return { success: false, message: "Jogo não está ativo." };
-    if (gameState.winner) return { success: false, message: `Jogo já terminou! Vencedor: ${gameState.winner}` };
-    if (gameState.playersSkipped[playerIndex]) {
-        gameState.playersSkipped[playerIndex] = false;
-        return { success: false, message: "Você perdeu a rodada por um Loop Infinito!", wasSkipped: true };
+function movePlayerInRoom(roomId, playerId, diceRoll, correctAnswer, isSpecialAdvance) {
+    const room = rooms.get(roomId);
+    if (!room || !room.gameState) return { success: false, message: "Jogo não encontrado" };
+    const state = room.gameState;
+    const playerIndex = state.players.indexOf(playerId);
+    if (playerIndex === -1) return { success: false };
+    if (!state.gameActive) return { success: false, message: "Jogo acabou" };
+    if (state.winner) return { success: false };
+
+    if (state.playersSkipped[playerIndex]) {
+        state.playersSkipped[playerIndex] = false;
+        return { success: false, wasSkipped: true, message: "Perdeu a rodada" };
     }
-    
-    let newPosition = gameState.playersPositions[playerIndex];
-    if (isSpecialCardAdvance) {
-        newPosition += 3;
-        if (newPosition > gameState.boardSize) newPosition = gameState.boardSize;
-        gameState.playersPositions[playerIndex] = newPosition;
-        let gameEnded = false;
-        let winner = null;
-        if (newPosition === gameState.boardSize) {
-            gameState.gameActive = false;
-            gameState.winner = playerId;
+
+    let newPos = state.playersPositions[playerIndex];
+
+    if (isSpecialAdvance) {
+        newPos += 3;
+        if (newPos > state.boardSize) newPos = state.boardSize;
+        state.playersPositions[playerIndex] = newPos;
+        let gameEnded = false, winner = null;
+        if (newPos === state.boardSize) {
+            state.gameActive = false;
+            state.winner = playerId;
             gameEnded = true;
             winner = playerId;
         }
-        return { success: true, newPosition, gameEnded, winner, card: null, specialCardUsed: true };
+        return { success: true, newPosition: newPos, gameEnded, winner, specialCardUsed: true };
     }
-    
-    if (!correctAnswer && gameState.playersPositions[playerIndex] !== 0) {
-        newPosition = Math.max(0, newPosition - 1);
-        gameState.playersPositions[playerIndex] = newPosition;
-        return { success: false, message: "Resposta errada! Volte uma casa.", newPosition };
+
+    if (!correctAnswer && newPos !== 0) {
+        newPos = Math.max(0, newPos - 1);
+        state.playersPositions[playerIndex] = newPos;
+        return { success: false, newPosition: newPos, message: "Errou! Voltou uma casa." };
     }
-    
-    newPosition += diceRoll;
-    if (newPosition > gameState.boardSize) newPosition = gameState.boardSize;
-    
+
+    newPos += diceRoll;
+    if (newPos > state.boardSize) newPos = state.boardSize;
+
     const specialTiles = {
         5: { name: 'LoopInfinito', effect: 'skip' },
         12: { name: 'Debug', effect: 'debug' },
@@ -187,136 +151,173 @@ function movePlayer(playerId, diceRoll, correctAnswer, isSpecialCardAdvance = fa
         25: { name: 'AntiLoop', effect: 'antiLoop' },
         27: { name: 'LoopInfinito', effect: 'skip' }
     };
-    
-    if (specialTiles[newPosition]) {
-        const tile = specialTiles[newPosition];
-        if (tile.effect === 'skip') {
-            gameState.playersSkipped[playerIndex] = true;
-        } else if (tile.effect === 'debug') {
-            gameState.playersSpecialCards[playerIndex].debug++;
-        } else if (tile.effect === 'antiLoop') {
-            gameState.playersSpecialCards[playerIndex].antiLoop++;
-        } else if (tile.effect === 'advance') {
-            newPosition = Math.min(gameState.boardSize, newPosition + 3);
-            if (newPosition === gameState.boardSize) {
-                gameState.gameActive = false;
-                gameState.winner = playerId;
-                return { success: true, newPosition, gameEnded: true, winner: playerId, card: null, specialTile: tile.name };
+
+    if (specialTiles[newPos]) {
+        const tile = specialTiles[newPos];
+        if (tile.effect === 'skip') state.playersSkipped[playerIndex] = true;
+        else if (tile.effect === 'debug') state.playersSpecialCards[playerIndex].debug++;
+        else if (tile.effect === 'antiLoop') state.playersSpecialCards[playerIndex].antiLoop++;
+        else if (tile.effect === 'advance') {
+            newPos = Math.min(state.boardSize, newPos + 3);
+            if (newPos === state.boardSize) {
+                state.gameActive = false;
+                state.winner = playerId;
+                return { success: true, newPosition: newPos, gameEnded: true, winner: playerId, specialTile: tile.name };
             }
         }
-        gameState.playersPositions[playerIndex] = newPosition;
-        let phase = newPosition <= 8 ? 1 : newPosition <= 16 ? 2 : newPosition <= 24 ? 3 : 4;
-        const card = getCardForPhase(phase);
-        return { success: true, newPosition, card, specialTile: tile.name, phase };
+        state.playersPositions[playerIndex] = newPos;
+        let phase = newPos <= 8 ? 1 : newPos <= 16 ? 2 : newPos <= 24 ? 3 : 4;
+        const card = getCardForPhase(state, phase);
+        return { success: true, newPosition: newPos, card, specialTile: tile.name, phase };
     }
-    
-    gameState.playersPositions[playerIndex] = newPosition;
-    let gameEnded = false;
-    let winner = null;
-    if (newPosition === gameState.boardSize) {
-        gameState.gameActive = false;
-        gameState.winner = playerId;
+
+    state.playersPositions[playerIndex] = newPos;
+    let gameEnded = false, winner = null;
+    if (newPos === state.boardSize) {
+        state.gameActive = false;
+        state.winner = playerId;
         gameEnded = true;
         winner = playerId;
     }
-    let phase = newPosition <= 8 ? 1 : newPosition <= 16 ? 2 : newPosition <= 24 ? 3 : 4;
-    const card = getCardForPhase(phase);
-    return { success: true, newPosition, gameEnded, winner, card, phase };
+    let phase = newPos <= 8 ? 1 : newPos <= 16 ? 2 : newPos <= 24 ? 3 : 4;
+    const card = getCardForPhase(state, phase);
+    return { success: true, newPosition: newPos, gameEnded, winner, card, phase };
 }
 
-function nextTurn() {
-    if (!gameState.gameActive) return null;
-    gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
+function nextTurnInRoom(roomId) {
+    const room = rooms.get(roomId);
+    if (!room || !room.gameState || !room.gameState.gameActive) return null;
+    const state = room.gameState;
+    state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
     return {
-        currentPlayer: gameState.players[gameState.currentPlayerIndex],
-        currentPlayerIndex: gameState.currentPlayerIndex,
-        positions: gameState.playersPositions,
-        playersSkipped: gameState.playersSkipped
+        currentPlayer: state.players[state.currentPlayerIndex],
+        positions: state.playersPositions,
+        playersSkipped: state.playersSkipped
     };
 }
 
+// Socket.IO
 io.on('connection', (socket) => {
-    console.log(`[Socket] Cliente conectado: ${socket.id}`);
+    console.log(`Cliente ${socket.id} conectado`);
 
-    socket.on('start-game', (players) => {
-        if (!players || players.length < 2) {
-            socket.emit('game-error', 'É necessário pelo menos 2 jogadores para começar.');
+    socket.on('join-room', ({ playerName, roomName }) => {
+        if (!playerName || !roomName) return;
+        const roomId = roomName.trim();
+        if (!rooms.has(roomId)) {
+            rooms.set(roomId, {
+                players: {},
+                readyStatus: {},
+                gameState: null
+            });
+        }
+        const room = rooms.get(roomId);
+        // Verificar se nome já existe
+        if (room.players[playerName]) {
+            socket.emit('error-msg', 'Nome já usado nesta sala. Escolha outro.');
             return;
         }
-        const gameData = initializeGame(players);
-        io.emit('game-initialized', gameData);
+        // Verificar se jogo já começou
+        if (room.gameState && room.gameState.gameActive) {
+            socket.emit('error-msg', 'Jogo já começou nesta sala. Não é possível entrar.');
+            return;
+        }
+        room.players[playerName] = socket.id;
+        room.readyStatus[playerName] = false;
+        socket.join(roomId);
+        socket.emit('room-joined', { room: roomId, playerName, players: room.players, readyStatus: room.readyStatus });
+        // Atualizar todos da sala
+        io.to(roomId).emit('room-update', { players: room.players, readyStatus: room.readyStatus });
     });
 
-    socket.on('roll-dice', (playerId) => {
-        const playerIndex = gameState.players.indexOf(playerId);
-        if (playerIndex !== gameState.currentPlayerIndex) {
-            socket.emit('game-error', 'Não é sua vez!');
+    socket.on('player-ready', ({ room, playerName }) => {
+        const roomObj = rooms.get(room);
+        if (!roomObj) return;
+        if (roomObj.gameState && roomObj.gameState.gameActive) return;
+        if (roomObj.readyStatus[playerName] !== undefined) {
+            roomObj.readyStatus[playerName] = true;
+            io.to(room).emit('room-update', { players: roomObj.players, readyStatus: roomObj.readyStatus });
+            // Verificar se todos estão prontos e tem pelo menos 2 jogadores
+            const allReady = Object.values(roomObj.readyStatus).every(v => v === true);
+            const playerCount = Object.keys(roomObj.players).length;
+            if (allReady && playerCount >= 2) {
+                // Iniciar jogo
+                const playersNames = Object.keys(roomObj.players);
+                const gameState = initializeGameState(room, playersNames);
+                roomObj.gameState = gameState;
+                const startData = {
+                    players: playersNames,
+                    positions: gameState.playersPositions,
+                    currentPlayer: gameState.players[gameState.currentPlayerIndex]
+                };
+                io.to(room).emit('game-start', startData);
+            }
+        }
+    });
+
+    socket.on('roll-dice', ({ room, playerId }) => {
+        const roomObj = rooms.get(room);
+        if (!roomObj || !roomObj.gameState || !roomObj.gameState.gameActive) return;
+        const state = roomObj.gameState;
+        const currentPlayer = state.players[state.currentPlayerIndex];
+        if (currentPlayer !== playerId) {
+            socket.emit('error-msg', 'Não é sua vez');
             return;
         }
         const diceRoll = Math.floor(Math.random() * 6) + 1;
-        socket.emit('dice-rolled', { playerId, diceRoll });
+        io.to(room).emit('dice-rolled', { playerId, diceRoll });
     });
 
-    socket.on('move-player', (data) => {
-        const { playerId, diceRoll, answer, challengeAnswer, specialCardUsed } = data;
-        let isCorrect = false;
-        if (answer && challengeAnswer) {
-            isCorrect = answer.toLowerCase().trim() === challengeAnswer.toLowerCase().trim();
-        } else if (specialCardUsed) {
-            isCorrect = true;
-        }
-        
-        const moveResult = movePlayer(playerId, diceRoll, isCorrect, specialCardUsed);
-        if (!moveResult.success && moveResult.wasSkipped) {
-            io.emit('player-skipped', { playerId, message: moveResult.message });
-            const turnUpdate = nextTurn();
-            if (turnUpdate) io.emit('turn-update', turnUpdate);
+    socket.on('move-player', ({ room, playerId, diceRoll, answer, challengeAnswer }) => {
+        const roomObj = rooms.get(room);
+        if (!roomObj || !roomObj.gameState) return;
+        const isCorrect = (answer && challengeAnswer && answer.toLowerCase().trim() === challengeAnswer.toLowerCase().trim());
+        const moveResult = movePlayerInRoom(room, playerId, diceRoll, isCorrect, false);
+        if (moveResult.wasSkipped) {
+            const turnUpdate = nextTurnInRoom(room);
+            if (turnUpdate) io.to(room).emit('turn-update', turnUpdate);
             return;
         }
-        
-        io.emit('player-moved', moveResult);
-        
+        io.to(room).emit('player-moved', moveResult);
         if (moveResult.gameEnded) {
-            io.emit('game-ended', { winner: moveResult.winner });
+            io.to(room).emit('game-ended', { winner: moveResult.winner });
             return;
         }
-        
         if (moveResult.card) {
-            io.emit('card-drawn', { playerId, card: moveResult.card, phase: moveResult.phase });
+            io.to(room).emit('card-drawn', { playerId, card: moveResult.card, phase: moveResult.phase });
         } else if (moveResult.specialTile) {
-            let specialMessage = `Você caiu em uma casa especial: ${moveResult.specialTile}!`;
-            if (moveResult.specialTile === 'LoopInfinito') specialMessage = `⚠️ ${specialMessage} Você perde a próxima rodada.`;
-            else if (moveResult.specialTile === 'Debug') specialMessage = `🔧 ${specialMessage} Você ganhou uma carta Debug!`;
-            else if (moveResult.specialTile === 'AntiLoop') specialMessage = `🛡️ ${specialMessage} Você ganhou uma carta Anti-Loop!`;
-            else if (moveResult.specialTile === 'Avanco') specialMessage = `⏩ ${specialMessage} Avance +3 casas!`;
-            io.emit('special-tile', { playerId, message: specialMessage, tileType: moveResult.specialTile });
+            let msg = `Caiu em casa especial: ${moveResult.specialTile}`;
+            io.to(room).emit('special-tile', { playerId, message: msg });
         }
-        
-        const turnUpdate = nextTurn();
-        if (turnUpdate) io.emit('turn-update', turnUpdate);
-    });
-
-    socket.on('use-special-card', (data) => {
-        const { playerId, cardType } = data;
-        const result = applySpecialCardEffect(playerId, cardType);
-        io.emit('special-card-used', { playerId, result });
-    });
-
-    socket.on('end-turn-manual', (playerId) => {
-        const playerIndex = gameState.players.indexOf(playerId);
-        if (playerIndex === gameState.currentPlayerIndex) {
-            const turnUpdate = nextTurn();
-            if (turnUpdate) io.emit('turn-update', turnUpdate);
-        }
+        const turnUpdate = nextTurnInRoom(room);
+        if (turnUpdate) io.to(room).emit('turn-update', turnUpdate);
     });
 
     socket.on('disconnect', () => {
-        console.log(`[Socket] Cliente desconectado: ${socket.id}`);
+        console.log(`Cliente ${socket.id} desconectado`);
+        // Remover de todas as salas
+        for (let [roomId, room] of rooms.entries()) {
+            let found = false;
+            for (let [name, id] of Object.entries(room.players)) {
+                if (id === socket.id) {
+                    delete room.players[name];
+                    delete room.readyStatus[name];
+                    found = true;
+                    break;
+                }
+            }
+            if (found) {
+                if (Object.keys(room.players).length === 0) {
+                    rooms.delete(roomId);
+                } else {
+                    io.to(roomId).emit('room-update', { players: room.players, readyStatus: room.readyStatus });
+                }
+                break;
+            }
+        }
     });
 });
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor rodando na porta ${PORT}`);
-    console.log(`📡 Socket.IO pronto para conexões (CORS liberado).`);
+    console.log(`🚀 Servidor rodando na porta ${PORT} com suporte a salas e lobby`);
 });
