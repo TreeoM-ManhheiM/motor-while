@@ -1,7 +1,7 @@
 {
   "name": "missao-while-server",
   "version": "1.0.0",
-  "description": "Servidor com lobby e salas para Loop Infinito",
+  "description": "Servidor multiplayer para Loop Infinito - Missão While",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
