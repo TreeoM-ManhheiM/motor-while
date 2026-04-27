@@ -8,155 +8,64 @@ const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// Estrutura de salas
-const rooms = new Map(); // roomId -> { players: { name: socketId }, readyStatus: { name: bool }, gameState: null ou objeto }
+// Salas
+const rooms = new Map();
 
-// ==================== BARALHOS ====================
-const CARDS_BY_PHASE = {
-    1: [
-        { text: "O que esse código imprime?\n\ni = 0\nwhile i < 3:\n    print(i)\n    i += 1", answer: "0 1 2", type: "normal" },
-        { text: "Quantas vezes o loop roda?\n\nx = 5\nwhile x > 0:\n    x -= 2", answer: "3", type: "normal" },
-        { text: "Este loop para? (V/F)\n\ni = 1\nwhile i != 0:\n    i = i - 1", answer: "V", type: "normal" },
-        { text: "Complete para repetir 10 vezes:\n\ni = 0\nwhile __________:\n    i += 1", answer: "i < 10", type: "normal" },
-        { text: "Qual a saída?\n\ni = 2\nwhile i <= 6:\n    print(i)\n    i += 2", answer: "2 4 6", type: "normal" },
-        { text: "O que acontece?\n\ni = 0\nwhile i < 0:\n    print(i)", answer: "Nada (não executa)", type: "normal" },
-        { text: "Qual a condição de parada?\n\ni = 10\nwhile i >= 0:\n    i -= 1", answer: "i se torna -1", type: "normal" },
-        { text: "Reescreva em palavras:\n\ni = 0\nwhile i < 4:\n    i += 1", answer: "Incrementa i até 4, roda 4 vezes", type: "normal" }
-    ],
-    2: [
-        { text: "Complete a condição (sentinela):\n\nnum = int(input())\nwhile ________:\n    print(num)\n    num = int(input())", answer: "num != 0", type: "normal" },
-        { text: "Complete o acumulador para somar até 0:\n\nsoma = 0\nn = int(input())\nwhile n != 0:\n    soma = __________\n    n = int(input())\nprint(soma)", answer: "soma + n", type: "normal" },
-        { text: "Conte quantos números positivos (entrada: números até 0).", answer: "cont += 1 se n > 0", type: "logic" },
-        { text: "Leia notas até -1 e calcule a média. (Pseudocódigo)", answer: "soma=0,cont=0; enquanto nota != -1: soma+=nota; cont+=1; ler nota; média = soma/cont", type: "logic" },
-        { text: "Leia números até 0 e mostre o maior.", answer: "inicialize maior com o primeiro número (se não for 0) e compare.", type: "logic" },
-        { text: "Quantas vezes roda? i=1; while i<20: i=i*2", answer: "5 vezes", type: "normal" },
-        { text: "Conte os pares (entrada: números até 0).", answer: "if n % 2 == 0: cont += 1", type: "normal" },
-        { text: "Complete para somar 1..n:\n\ni=1; s=0\nwhile i <= n:\n    s += i\n    i += 1\nprint(s)", answer: "Soma de 1 até n", type: "normal" }
-    ],
-    3: [
-        { text: "Corrija o loop infinito:\n\ni = 0\nwhile i < 5:\n    print(i)", answer: "Faltou i += 1", type: "debug" },
-        { text: "Por que trava?\n\nn = 10\nwhile n > 0:\n    n = n + 1", answer: "n cresce, deveria ser n -= 1", type: "debug" },
-        { text: "Condição errada:\n\ni = 0\nwhile i > 3:\n    print(i)\n    i += 1", answer: "Nunca executa, corrigir para i < 3", type: "debug" },
-        { text: "Sentinela bugada:\n\nnum = int(input())\nwhile num == 0:\n    print(num)\n    num = int(input())", answer: "Condição invertida, deveria ser num != 0", type: "debug" },
-        { text: "Ordem do input:\n\nwhile n != 0:\n    n = int(input())\n    print(n)", answer: "n não inicializado; ler antes do while", type: "debug" },
-        { text: "Atualização errada:\n\ni = 1\nwhile i < 10:\n    print(i)\n    i = i", answer: "i nunca muda; corrigir para i += 1", type: "debug" },
-        { text: "Off-by-one: i=0; while i<=3: print(i); i+=1. Queríamos 3 valores.", answer: "Imprime 4 valores. Usar i<3", type: "debug" },
-        { text: "Acumulador esquecido:\n\ns=0; i=1\nwhile i <= 5:\n    i += 1\nprint(s)", answer: "s nunca muda; faltou s += i", type: "debug" }
-    ],
-    4: [
-        { text: "Crie o pseudocódigo para ler notas até -1 e calcular a média.", answer: "soma=cont=0; enquanto nota != -1: soma+=nota; cont+=1; ler nota; media=soma/cont", type: "challenge" },
-        { text: "Validação de entrada: leia idade até ser válida (0-120).", answer: "while idade < 0 or idade > 120: ler novamente", type: "challenge" },
-        { text: "Faça um menu que repete até opção 0 (sair).", answer: "while opcao != 0: mostrar menu; ler opcao; executar", type: "challenge" },
-        { text: "Calcule o fatorial de n (n!).", answer: "fat=1; i=1; while i<=n: fat*=i; i+=1", type: "challenge" },
-        { text: "Some os números pares até n.", answer: "i=2; soma=0; while i<=n: soma+=i; i+=2", type: "challenge" },
-        { text: "Conte os dígitos de um número positivo.", answer: "cont=0; while n>0: n//=10; cont+=1", type: "challenge" },
-        { text: "Adivinhação: repita até acertar, dando dicas.", answer: "while chute != secreto: informar maior/menor; ler chute", type: "challenge" },
-        { text: "Explique 2 formas de evitar loop infinito em while.", answer: "atualizar variável de controle; condição de parada correta", type: "challenge" }
-    ]
-};
+// ==================== 30 MISSÕES ====================
+const MISSOES = [
+    { id: 0, titulo: "🔄 1. Contagem Regressiva", historia: "Use um loop `while` para exibir os números de 5 até 1 (decrescente).", dica: "Inicialize `contador = 5` e decremente até 0.", codigoEsperado: ["contador = 5", "while contador > 0:", "    print(contador)", "    contador -= 1"] },
+    { id: 1, titulo: "➕ 2. Soma até 100", historia: "Some números de 1 até atingir ou ultrapassar 100. Exiba a soma final.", dica: "Use `soma = 0`, `numero = 1`, while soma < 100: soma += numero; numero += 1", codigoEsperado: ["soma = 0", "numero = 1", "while soma < 100:", "    soma += numero", "    numero += 1", "print(soma)"] },
+    { id: 2, titulo: "⛔ 3. Menu com Break", historia: "Crie um loop infinito que pede um comando. Se o usuário digitar 'sair', use `break` para encerrar.", dica: "while True: comando = input(); if comando == 'sair': break", codigoEsperado: ["while True:", "    comando = input('Digite um comando (ou \"sair\"): ')", "    if comando == 'sair':", "        break", "    print(f'Você digitou: {comando}')"] },
+    { id: 3, titulo: "⏭️ 4. Continue - Ímpares", historia: "Exiba apenas os números ímpares de 1 a 10. Use `continue` para pular os pares.", dica: "numero = 1; while numero <= 10: if numero % 2 == 0: numero += 1; continue; print(numero); numero += 1", codigoEsperado: ["numero = 1", "while numero <= 10:", "    if numero % 2 == 0:", "        numero += 1", "        continue", "    print(numero)", "    numero += 1"] },
+    { id: 4, titulo: "🔢 5. AND - Múltiplo de 3 e 5", historia: "Percorra números de 1 a 20. Pare quando encontrar um número divisível por 3 E por 5 (múltiplo de 15).", dica: "if i % 3 == 0 and i % 5 == 0: break", codigoEsperado: ["i = 1", "while i <= 20:", "    if i % 3 == 0 and i % 5 == 0:", "        break", "    print(i)", "    i += 1"] },
+    { id: 5, titulo: "🔀 6. OR - Parada com 0 ou negativo", historia: "Peça números até que o usuário digite 0 ou um número negativo. Use `break`.", dica: "while True: num = int(input()); if num == 0 or num < 0: break", codigoEsperado: ["while True:", "    num = int(input('Digite um número (0 ou negativo para parar): '))", "    if num == 0 or num < 0:", "        break", "    print(f'Você digitou: {num}')"] },
+    { id: 6, titulo: "🚫 7. NOT - Validação de senha", historia: "Peça a senha. Enquanto a senha NÃO for '1234', continue pedindo. Use `not`.", dica: "senha = ''; while not senha == '1234': senha = input()", codigoEsperado: ["senha = ''", "while not senha == '1234':", "    senha = input('Digite a senha: ')", "print('Acesso liberado!')"] },
+    { id: 7, titulo: "🎲 8. Tabuada interativa", historia: "Peça um número e mostre sua tabuada do 1 ao 10 usando while.", dica: "n = int(input()); i = 1; while i <= 10: print(f'{n} x {i} = {n*i}'); i += 1", codigoEsperado: ["n = int(input('Digite um número: '))", "i = 1", "while i <= 10:", "    print(f'{n} x {i} = {n*i}')", "    i += 1"] },
+    { id: 8, titulo: "📝 9. Break - Encontrando primo", historia: "Verifique se um número é primo. Se encontrar um divisor, use break.", dica: "num = int(input()); i = 2; while i < num: if num % i == 0: break; i += 1", codigoEsperado: ["num = int(input('Digite um número: '))", "i = 2", "while i < num:", "    if num % i == 0:", "        print(f'{num} não é primo')", "        break", "    i += 1", "else:", "    print(f'{num} é primo')"] },
+    { id: 9, titulo: "🔄 10. Continue - Múltiplos de 3", historia: "Exiba números de 1 a 20, pulando os múltiplos de 3 (use continue).", dica: "i = 1; while i <= 20: if i % 3 == 0: i += 1; continue; print(i); i += 1", codigoEsperado: ["i = 1", "while i <= 20:", "    if i % 3 == 0:", "        i += 1", "        continue", "    print(i)", "    i += 1"] },
+    { id: 10, titulo: "💡 11. Validação de entrada (1 a 10)", historia: "Peça um número entre 1 e 10. Enquanto não estiver nesse intervalo, continue pedindo.", dica: "num = 0; while num < 1 or num > 10: num = int(input())", codigoEsperado: ["num = 0", "while num < 1 or num > 10:", "    num = int(input('Digite um número entre 1 e 10: '))", "print(f'Número válido: {num}')"] },
+    { id: 11, titulo: "🧮 12. Fatorial", historia: "Calcule o fatorial de um número usando while. Ex: 5! = 120.", dica: "n = int(input()); fat = 1; while n > 0: fat *= n; n -= 1", codigoEsperado: ["n = int(input('Digite um número: '))", "fatorial = 1", "original = n", "while n > 0:", "    fatorial *= n", "    n -= 1", "print(f'{original}! = {fatorial}')"] },
+    { id: 12, titulo: "🎯 13. Break e Continue combinados", historia: "Percorra números de 1 a 50. Pule pares (continue). Se encontrar primo > 30, pare (break).", dica: "Use while, if para par, continue, e break na condição especial.", codigoEsperado: ["i = 1", "while i <= 50:", "    if i % 2 == 0:", "        i += 1", "        continue", "    if i > 30 and i % 2 != 0 and i % 3 != 0 and i % 5 != 0:", "        print(f'Primo encontrado: {i}')", "        break", "    print(i)", "    i += 1"] },
+    { id: 13, titulo: "🏦 14. Caixa eletrônico", historia: "Simule um caixa com saldo 1000. Permita saques. Se saldo insuficiente, continue pedindo. Se digitar 0, break.", dica: "saldo = 1000; while True: saque = int(input()); if saque == 0: break; if saque > saldo: continue; saldo -= saque", codigoEsperado: ["saldo = 1000", "while True:", "    saque = int(input('Digite o valor do saque (0 para sair): '))", "    if saque == 0:", "        break", "    if saque > saldo:", "        print('Saldo insuficiente!')", "        continue", "    saldo -= saque", "    print(f'Saque realizado. Saldo atual: {saldo}')"] },
+    { id: 14, titulo: "🎮 15. Jogo da adivinhação", historia: "Número secreto = 42. Peça palpites até acertar. Use break quando acertar.", dica: "while True: palpite = int(input()); if palpite == 42: break; else: print('Errou')", codigoEsperado: ["secreto = 42", "while True:", "    palpite = int(input('Adivinhe o número secreto: '))", "    if palpite == secreto:", "        print('Acertou!')", "        break", "    else:", "        print('Tente novamente!')"] },
+    { id: 15, titulo: "📊 16. Média de notas", historia: "Peça notas até -1. Ignore notas negativas (continue). Calcule a média.", dica: "soma=0; cont=0; while True: nota = float(input()); if nota == -1: break; if nota < 0: continue; soma+=nota; cont+=1", codigoEsperado: ["soma = 0", "contador = 0", "while True:", "    nota = float(input('Digite a nota (-1 para sair): '))", "    if nota == -1:", "        break", "    if nota < 0:", "        continue", "    soma += nota", "    contador += 1", "if contador > 0:", "    media = soma / contador", "    print(f'Média: {media:.2f}')"] },
+    { id: 16, titulo: "🔄 17. While aninhado com break", historia: "Use while aninhado (i de 1 a 3, j de 1 a 5). Se j for 3, interrompa o loop interno.", dica: "i=1; while i<=3: j=1; while j<=5: if j==3: break; print(i,j); j+=1; i+=1", codigoEsperado: ["i = 1", "while i <= 3:", "    j = 1", "    while j <= 5:", "        if j == 3:", "            break", "        print(i, j)", "        j += 1", "    i += 1"] },
+    { id: 17, titulo: "🔍 18. Sequência de Fibonacci", historia: "Gere a sequência de Fibonacci até ultrapassar 1000. Pare quando o termo > 1000.", dica: "a,b=0,1; while a<=1000: print(a); a,b=b,a+b", codigoEsperado: ["a, b = 0, 1", "while a <= 1000:", "    print(a)", "    a, b = b, a + b"] },
+    { id: 18, titulo: "⚡ 19. Operadores compostos", historia: "Peça um número. Enquanto ele não estiver entre 51 e 99 (inclusive), continue pedindo.", dica: "num=0; while not (num>50 and num<100): num=int(input())", codigoEsperado: ["num = 0", "while not (num > 50 and num < 100):", "    num = int(input('Digite um número entre 51 e 99: '))", "print(f'Número aceito: {num}')"] },
+    { id: 19, titulo: "🏁 20. Login com tentativas", historia: "Sistema de login com 3 tentativas. Use while, break se acertar, continue se errar.", dica: "tent=0; while tent<3: user=input(); senha=input(); if user=='admin' and senha=='123': print('Acesso'); break; else: tent+=1; continue; else: print('Bloqueado')", codigoEsperado: ["tentativas = 0", "while tentativas < 3:", "    usuario = input('Usuário: ')","    senha = input('Senha: ')","    if usuario == 'admin' and senha == '123':","        print('Acesso liberado!')","        break","    else:","        tentativas += 1","        print(f'Senha incorreta! Tentativas restantes: {3 - tentativas}')","        continue","else:","    print('Conta bloqueada! Muitas tentativas.')"] },
+    { id: 20, titulo: "🔄 21. While - Pares até N", historia: "Exiba todos os números pares de 2 até N (inclusive). Use while.", dica: "n=int(input()); i=2; while i<=n: print(i); i+=2", codigoEsperado: ["n = int(input('Digite um número: '))", "i = 2", "while i <= n:", "    print(i)", "    i += 2"] },
+    { id: 21, titulo: "📉 22. While - Decrescente com passo", historia: "Exiba números de 10 até 1, pulando de 2 em 2 (10,8,6,4,2).", dica: "i=10; while i>=1: print(i); i-=2", codigoEsperado: ["i = 10", "while i >= 1:", "    print(i)", "    i -= 2"] },
+    { id: 22, titulo: "🔁 23. While - Potência de 2", historia: "Exiba as potências de 2 enquanto forem menores que 1000 (1,2,4,8,...).", dica: "i=1; while i<1000: print(i); i*=2", codigoEsperado: ["i = 1", "while i < 1000:", "    print(i)", "    i *= 2"] },
+    { id: 23, titulo: "📥 24. Break - Soma até negativo", historia: "Some números digitados até que um número negativo seja inserido. Use break.", dica: "soma=0; while True: n=int(input()); if n<0: break; soma+=n; print(soma)", codigoEsperado: ["soma = 0", "while True:", "    num = int(input('Digite um número (negativo para parar): '))", "    if num < 0:", "        break", "    soma += num", "    print(f'Soma parcial: {soma}')"] },
+    { id: 24, titulo: "⏩ 25. Continue - Ignorar múltiplos de 5", historia: "Exiba números de 1 a 30, mas pule os múltiplos de 5.", dica: "i=1; while i<=30: if i%5==0: i+=1; continue; print(i); i+=1", codigoEsperado: ["i = 1", "while i <= 30:", "    if i % 5 == 0:", "        i += 1", "        continue", "    print(i)", "    i += 1"] },
+    { id: 25, titulo: "🔐 26. While - Validação com OR", historia: "Peça um número que seja múltiplo de 3 ou de 5. Enquanto não for, continue pedindo.", dica: "num=0; while not (num%3==0 or num%5==0): num=int(input())", codigoEsperado: ["num = 0", "while not (num % 3 == 0 or num % 5 == 0):", "    num = int(input('Digite um múltiplo de 3 ou 5: '))", "print(f'Número válido: {num}')"] },
+    { id: 26, titulo: "📈 27. While - Crescente até N", historia: "Exiba números de 1 até N, mas pare se encontrar um número maior que 100. Use break.", dica: "n=int(input()); i=1; while i<=n: if i>100: break; print(i); i+=1", codigoEsperado: ["n = int(input('Digite o limite: '))", "i = 1", "while i <= n:", "    if i > 100:", "        break", "    print(i)", "    i += 1"] },
+    { id: 27, titulo: "🧮 28. Soma dos dígitos", historia: "Calcule a soma dos dígitos de um número positivo usando while.", dica: "n=int(input()); soma=0; while n>0: soma+=n%10; n//=10; print(soma)", codigoEsperado: ["n = int(input('Digite um número: '))", "soma = 0", "while n > 0:", "    soma += n % 10", "    n //= 10", "print(f'Soma dos dígitos: {soma}')"] },
+    { id: 28, titulo: "🔄 29. While - Inverter número", historia: "Inverta a ordem dos dígitos de um número. Ex: 123 → 321.", dica: "n=int(input()); invertido=0; while n>0: invertido=invertido*10 + n%10; n//=10; print(invertido)", codigoEsperado: ["n = int(input('Digite um número: '))", "invertido = 0", "while n > 0:", "    invertido = invertido * 10 + n % 10", "    n //= 10", "print(f'Número invertido: {invertido}')"] },
+    { id: 29, titulo: "🏆 30. Desafio final - Múltiplas condições", historia: "Peça números até que a soma ultrapasse 500 ou o usuário digite -1. Mostre a soma final.", dica: "soma=0; while True: n=int(input()); if n==-1: break; soma+=n; if soma>500: break; print(soma)", codigoEsperado: ["soma = 0", "while True:", "    num = int(input('Digite um número (-1 para sair): '))", "    if num == -1:", "        break", "    soma += num", "    if soma > 500:", "        break", "    print(f'Soma atual: {soma}')", "print(f'Soma final: {soma}')"] }
+];
 
-function shuffleArray(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
+function getMissao(id) {
+    return MISSOES[id];
 }
 
-function initializeGameState(roomId, playersNames) {
+function getNumMissoes() {
+    return MISSOES.length;
+}
+
+// Estado do jogo para uma sala
+function createGameState(roomId, playersNames) {
     const state = {
         players: playersNames,
         currentPlayerIndex: 0,
-        boardSize: 28,
+        boardSize: 30, // 30 casas = 30 missões
         playersPositions: new Array(playersNames.length).fill(0),
-        playersSkipped: new Array(playersNames.length).fill(false),
-        playersSpecialCards: playersNames.map(() => ({ debug: 0, antiLoop: 0 })),
-        deck: { 1: [], 2: [], 3: [], 4: [] },
-        specialDeck: [],
+        playersMissaoAtual: new Array(playersNames.length).fill(0),
         gameActive: true,
-        winner: null
+        winner: null,
+        missoesAcumuladas: playersNames.map(() => []) // históricos
     };
-    for (let i = 1; i <= 4; i++) {
-        state.deck[i] = shuffleArray([...CARDS_BY_PHASE[i]]);
-    }
     return state;
-}
-
-function getCardForPhase(state, phase) {
-    let deck = state.deck[phase];
-    if (deck.length === 0) {
-        deck = shuffleArray([...CARDS_BY_PHASE[phase]]);
-        state.deck[phase] = deck;
-    }
-    return deck.pop();
-}
-
-function movePlayer(state, playerId, diceRoll, isCorrect) {
-    const idx = state.players.indexOf(playerId);
-    if (idx === -1) return { success: false, message: "Jogador não encontrado" };
-    if (state.playersSkipped[idx]) {
-        state.playersSkipped[idx] = false;
-        return { success: false, wasSkipped: true, message: "Perdeu a rodada (Loop Infinito)" };
-    }
-
-    let newPos = state.playersPositions[idx];
-    if (!isCorrect && newPos !== 0) {
-        newPos = Math.max(0, newPos - 1);
-        state.playersPositions[idx] = newPos;
-        return { success: false, newPosition: newPos, message: "Resposta errada! Voltou uma casa." };
-    }
-
-    newPos += diceRoll;
-    if (newPos > state.boardSize) newPos = state.boardSize;
-
-    // Casas especiais
-    const specialTiles = {
-        5: { name: 'LoopInfinito', effect: 'skip' },
-        12: { name: 'Debug', effect: 'debug' },
-        19: { name: 'Avanco', effect: 'advance' },
-        25: { name: 'AntiLoop', effect: 'antiLoop' },
-        27: { name: 'LoopInfinito', effect: 'skip' }
-    };
-
-    if (specialTiles[newPos]) {
-        const tile = specialTiles[newPos];
-        if (tile.effect === 'skip') state.playersSkipped[idx] = true;
-        else if (tile.effect === 'debug') state.playersSpecialCards[idx].debug++;
-        else if (tile.effect === 'antiLoop') state.playersSpecialCards[idx].antiLoop++;
-        else if (tile.effect === 'advance') {
-            newPos = Math.min(state.boardSize, newPos + 3);
-            if (newPos === state.boardSize) {
-                state.gameActive = false;
-                state.winner = playerId;
-                return { success: true, newPosition: newPos, gameEnded: true, winner: playerId, specialTile: tile.name };
-            }
-        }
-        state.playersPositions[idx] = newPos;
-        let phase = newPos <= 8 ? 1 : newPos <= 16 ? 2 : newPos <= 24 ? 3 : 4;
-        const card = getCardForPhase(state, phase);
-        return { success: true, newPosition: newPos, card, phase, specialTile: tile.name };
-    }
-
-    state.playersPositions[idx] = newPos;
-    let gameEnded = false, winner = null;
-    if (newPos === state.boardSize) {
-        state.gameActive = false;
-        state.winner = playerId;
-        gameEnded = true;
-        winner = playerId;
-    }
-    let phase = newPos <= 8 ? 1 : newPos <= 16 ? 2 : newPos <= 24 ? 3 : 4;
-    const card = getCardForPhase(state, phase);
-    return { success: true, newPosition: newPos, card, phase, gameEnded, winner };
-}
-
-function nextTurn(state) {
-    if (!state.gameActive) return null;
-    state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
-    return {
-        currentPlayer: state.players[state.currentPlayerIndex],
-        positions: state.playersPositions
-    };
 }
 
 io.on('connection', (socket) => {
@@ -169,11 +78,11 @@ io.on('connection', (socket) => {
         }
         const room = rooms.get(roomId);
         if (room.gameState && room.gameState.gameActive) {
-            socket.emit('error-msg', 'Jogo já começou nesta sala. Não é possível entrar.');
+            socket.emit('error-msg', 'Jogo já começou nesta sala.');
             return;
         }
         if (room.players[playerName]) {
-            socket.emit('error-msg', 'Nome já usado nesta sala. Escolha outro.');
+            socket.emit('error-msg', 'Nome já usado.');
             return;
         }
         room.players[playerName] = socket.id;
@@ -186,7 +95,7 @@ io.on('connection', (socket) => {
     socket.on('player-ready', ({ room, playerName }) => {
         const roomObj = rooms.get(room);
         if (!roomObj) return;
-        if (roomObj.gameState && roomObj.gameState.gameActive) return;
+        if (roomObj.gameState) return;
         if (roomObj.readyStatus[playerName] !== undefined) {
             roomObj.readyStatus[playerName] = true;
             io.to(room).emit('room-update', { players: roomObj.players, readyStatus: roomObj.readyStatus });
@@ -194,76 +103,76 @@ io.on('connection', (socket) => {
             const playerCount = Object.keys(roomObj.players).length;
             if (allReady && playerCount >= 2) {
                 const playersNames = Object.keys(roomObj.players);
-                const gameState = initializeGameState(room, playersNames);
+                const gameState = createGameState(room, playersNames);
                 roomObj.gameState = gameState;
                 io.to(room).emit('game-start', {
                     players: playersNames,
                     positions: gameState.playersPositions,
-                    currentPlayer: gameState.players[gameState.currentPlayerIndex]
+                    currentPlayer: gameState.players[gameState.currentPlayerIndex],
+                    missoesPorPosicao: MISSOES.map((m, idx) => ({ idx, titulo: m.titulo }))
                 });
             }
         }
     });
 
-    socket.on('roll-dice', ({ room, playerId }) => {
-        const roomObj = rooms.get(room);
-        if (!roomObj || !roomObj.gameState || !roomObj.gameState.gameActive) return;
-        const state = roomObj.gameState;
-        const currentPlayer = state.players[state.currentPlayerIndex];
-        if (currentPlayer !== playerId) {
-            socket.emit('error-msg', 'Não é sua vez');
-            return;
-        }
-        const diceRoll = Math.floor(Math.random() * 6) + 1;
-        // Envia o valor do dado
-        io.to(room).emit('dice-rolled', { playerId, diceRoll });
-        // Sorteia e envia o desafio baseado na posição atual do jogador
-        const idx = state.players.indexOf(playerId);
-        const currentPos = state.playersPositions[idx];
-        let phase = currentPos <= 8 ? 1 : currentPos <= 16 ? 2 : currentPos <= 24 ? 3 : 4;
-        const card = getCardForPhase(state, phase);
-        io.to(room).emit('challenge-sent', { playerId, card, phase, diceRoll });
-    });
-
-    socket.on('submit-answer', ({ room, playerId, diceRoll, answer, expected, card }) => {
+    socket.on('request-missao', ({ room, playerId, posicao }) => {
         const roomObj = rooms.get(room);
         if (!roomObj || !roomObj.gameState) return;
         const state = roomObj.gameState;
-        const currentPlayer = state.players[state.currentPlayerIndex];
-        if (currentPlayer !== playerId) return;
+        const idxPlayer = state.players.indexOf(playerId);
+        if (idxPlayer === -1) return;
+        const missaoIdx = posicao; // a casa atual (0..29)
+        if (missaoIdx >= 0 && missaoIdx < MISSOES.length) {
+            const missao = MISSOES[missaoIdx];
+            socket.emit('missao-data', { missao, posicao: missaoIdx });
+        }
+    });
 
-        const isCorrect = (answer.toLowerCase().trim() === expected.toLowerCase().trim());
-        const moveResult = movePlayer(state, playerId, diceRoll, isCorrect);
-
-        if (moveResult.wasSkipped) {
-            io.to(room).emit('move-result', {
-                playerId,
-                success: false,
-                message: moveResult.message,
-                positions: state.playersPositions
-            });
-            const turnUpdate = nextTurn(state);
-            if (turnUpdate) io.to(room).emit('turn-update', turnUpdate);
+    socket.on('submit-codigo', ({ room, playerId, posicao, blocosMontados }) => {
+        const roomObj = rooms.get(room);
+        if (!roomObj || !roomObj.gameState) return;
+        const state = roomObj.gameState;
+        const idxPlayer = state.players.indexOf(playerId);
+        if (idxPlayer === -1) return;
+        // Verificar se é a vez do jogador
+        if (state.players[state.currentPlayerIndex] !== playerId) {
+            socket.emit('error-msg', 'Não é sua vez');
             return;
         }
-
-        io.to(room).emit('move-result', {
-            playerId,
-            success: moveResult.success,
-            message: moveResult.success ? (moveResult.specialTile ? `Caiu em ${moveResult.specialTile}!` : 'Avançou!') : moveResult.message,
-            newPosition: moveResult.newPosition,
-            positions: state.playersPositions,
-            gameEnded: moveResult.gameEnded,
-            winner: moveResult.winner
-        });
-
-        if (moveResult.gameEnded) {
-            io.to(room).emit('game-ended', { winner: moveResult.winner });
-            return;
+        const missao = MISSOES[posicao];
+        const esperado = missao.codigoEsperado;
+        let acertou = (blocosMontados.length === esperado.length);
+        if (acertou) {
+            for (let i = 0; i < esperado.length; i++) {
+                if (blocosMontados[i] !== esperado[i]) { acertou = false; break; }
+            }
         }
-
-        const turnUpdate = nextTurn(state);
-        if (turnUpdate) io.to(room).emit('turn-update', turnUpdate);
+        if (acertou) {
+            // Avança para próxima casa
+            let newPos = state.playersPositions[idxPlayer] + 1;
+            if (newPos > state.boardSize) newPos = state.boardSize;
+            state.playersPositions[idxPlayer] = newPos;
+            io.to(room).emit('move-result', { playerId, success: true, message: 'Missão concluída! Avançou uma casa.', newPosition: newPos, positions: state.playersPositions });
+            // Verificar vitória
+            if (newPos === state.boardSize) {
+                state.gameActive = false;
+                state.winner = playerId;
+                io.to(room).emit('game-ended', { winner: playerId });
+                return;
+            }
+            // Próximo turno
+            state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
+            io.to(room).emit('turn-update', { currentPlayer: state.players[state.currentPlayerIndex], positions: state.playersPositions });
+        } else {
+            // Errou: volta uma casa (se não estiver na primeira)
+            let newPos = state.playersPositions[idxPlayer];
+            if (newPos > 0) newPos--;
+            state.playersPositions[idxPlayer] = newPos;
+            io.to(room).emit('move-result', { playerId, success: false, message: 'Código incorreto! Voltou uma casa.', newPosition: newPos, positions: state.playersPositions });
+            // Próximo turno (não é penalidade extra)
+            state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
+            io.to(room).emit('turn-update', { currentPlayer: state.players[state.currentPlayerIndex], positions: state.playersPositions });
+        }
     });
 
     socket.on('disconnect', () => {
@@ -279,11 +188,8 @@ io.on('connection', (socket) => {
                 }
             }
             if (found) {
-                if (Object.keys(room.players).length === 0) {
-                    rooms.delete(roomId);
-                } else {
-                    io.to(roomId).emit('room-update', { players: room.players, readyStatus: room.readyStatus });
-                }
+                if (Object.keys(room.players).length === 0) rooms.delete(roomId);
+                else io.to(roomId).emit('room-update', { players: room.players, readyStatus: room.readyStatus });
                 break;
             }
         }
@@ -292,5 +198,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor rodando na porta ${PORT} com lobby, salas e fluxo corrigido`);
+    console.log(`🚀 Servidor rodando na porta ${PORT} com 30 missões de programação`);
 });
