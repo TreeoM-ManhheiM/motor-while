@@ -8,42 +8,35 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Servir arquivos estáticos da pasta atual
-app.use(express.static(path.join(__dirname, './')));
+// Servir arquivos estáticos da pasta 'public' (criada no build)
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Rota principal
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.get('/regras', (req, res) => {
-    res.sendFile(path.join(__dirname, 'regras.html'));
+    res.sendFile(path.join(__dirname, 'public', 'regras.html'));
 });
 
 // --- Estado do Jogo (In-memory) ---
-// Para simplicidade, vamos manter um único jogo global.
-// Em uma versão mais avançada, você poderia ter múltiplas salas.
 const gameState = {
     players: [],
     currentPlayerIndex: 0,
-    boardSize: 28, // Casas no tabuleiro
+    boardSize: 28,
     playersPositions: [],
-    playersSkipped: [], // Se o jogador perdeu a vez por loop infinito
-    playersSpecialCards: [], // Array de objetos: { debug: 0, antiLoop: 0 }
-    deck: { // Baralho inicial, será embaralhado e consumido
-        1: [], // Fase 1 (Verde)
-        2: [], // Fase 2 (Azul)
-        3: [], // Fase 3 (Vermelho)
-        4: []  // Fase 4 (Dourado)
-    },
-    specialDeck: [], // Cartas especiais
+    playersSkipped: [],
+    playersSpecialCards: [],
+    deck: { 1: [], 2: [], 3: [], 4: [] },
+    specialDeck: [],
     gameActive: false,
     winner: null
 };
 
-// --- Baralhos de Cartas (Prontos para uso)---
+// --- Baralhos de Cartas ---
 const CARDS_BY_PHASE = {
-    1: [ // Fase 1 - Verde
+    1: [
         { text: "O que esse código imprime?\n\ni = 0\nwhile i < 3:\n    print(i)\n    i += 1", answer: "0 1 2", type: "normal" },
         { text: "Quantas vezes o loop roda?\n\nx = 5\nwhile x > 0:\n    x -= 2", answer: "3", type: "normal" },
         { text: "Este loop para? (V/F)\n\ni = 1\nwhile i != 0:\n    i = i - 1", answer: "V", type: "normal" },
@@ -53,7 +46,7 @@ const CARDS_BY_PHASE = {
         { text: "Qual a condição de parada?\n\ni = 10\nwhile i >= 0:\n    i -= 1", answer: "i se torna -1", type: "normal" },
         { text: "Reescreva em palavras:\n\ni = 0\nwhile i < 4:\n    i += 1", answer: "Incrementa i até 4, roda 4 vezes", type: "normal" }
     ],
-    2: [ // Fase 2 - Azul
+    2: [
         { text: "Complete a condição (sentinela):\n\nnum = int(input())\nwhile ________:\n    print(num)\n    num = int(input())", answer: "num != 0", type: "normal" },
         { text: "Complete o acumulador para somar até 0:\n\nsoma = 0\nn = int(input())\nwhile n != 0:\n    soma = __________\n    n = int(input())\nprint(soma)", answer: "soma + n", type: "normal" },
         { text: "Conte quantos números positivos (entrada: números até 0).", answer: "cont += 1 se n > 0", type: "logic" },
@@ -63,7 +56,7 @@ const CARDS_BY_PHASE = {
         { text: "Conte os pares (entrada: números até 0).", answer: "if n % 2 == 0: cont += 1", type: "normal" },
         { text: "Complete para somar 1..n:\n\ni=1; s=0\nwhile i <= n:\n    s += i\n    i += 1\nprint(s)", answer: "Soma de 1 até n", type: "normal" }
     ],
-    3: [ // Fase 3 - Vermelho (Debug)
+    3: [
         { text: "Corrija o loop infinito:\n\ni = 0\nwhile i < 5:\n    print(i)", answer: "Faltou i += 1", type: "debug" },
         { text: "Por que trava?\n\nn = 10\nwhile n > 0:\n    n = n + 1", answer: "n cresce, deveria ser n -= 1", type: "debug" },
         { text: "Condição errada:\n\ni = 0\nwhile i > 3:\n    print(i)\n    i += 1", answer: "Nunca executa, corrigir para i < 3", type: "debug" },
@@ -73,7 +66,7 @@ const CARDS_BY_PHASE = {
         { text: "Off-by-one: i=0; while i<=3: print(i); i+=1. Queríamos 3 valores.", answer: "Imprime 4 valores. Usar i<3", type: "debug" },
         { text: "Acumulador esquecido:\n\ns=0; i=1\nwhile i <= 5:\n    i += 1\nprint(s)", answer: "s nunca muda; faltou s += i", type: "debug" }
     ],
-    4: [ // Fase 4 - Dourado (Desafio Final)
+    4: [
         { text: "Crie o pseudocódigo para ler notas até -1 e calcular a média.", answer: "soma=cont=0; enquanto nota != -1: soma+=nota; cont+=1; ler nota; media=soma/cont", type: "challenge" },
         { text: "Validação de entrada: leia idade até ser válida (0-120).", answer: "while idade < 0 or idade > 120: ler novamente", type: "challenge" },
         { text: "Faça um menu que repete até opção 0 (sair).", answer: "while opcao != 0: mostrar menu; ler opcao; executar", type: "challenge" },
@@ -115,7 +108,6 @@ function resetAndShuffleDecks() {
 function getCardForPhase(phase) {
     const phaseDeck = gameState.deck[phase];
     if (phaseDeck.length === 0) {
-        // Recarregar e embaralhar se o deck acabar
         gameState.deck[phase] = shuffleArray([...CARDS_BY_PHASE[phase]]);
         console.log(`Deck da fase ${phase} recarregado.`);
     }
@@ -130,7 +122,6 @@ function getSpecialCard() {
     return gameState.specialDeck.pop();
 }
 
-// --- Lógica do Jogo ---
 function initializeGame(playersList) {
     gameState.players = playersList;
     gameState.currentPlayerIndex = 0;
@@ -152,7 +143,6 @@ function initializeGame(playersList) {
 function applySpecialCardEffect(playerId, cardType) {
     const playerIndex = gameState.players.indexOf(playerId);
     const specials = gameState.playersSpecialCards[playerIndex];
-    
     if (cardType === 'debug' && specials.debug > 0) {
         specials.debug--;
         return { success: true, effect: 'debug_used', message: 'Você usou um Debug!' };
@@ -161,21 +151,6 @@ function applySpecialCardEffect(playerId, cardType) {
         return { success: true, effect: 'antiLoop_used', message: 'Você usou um Anti-Loop!' };
     }
     return { success: false, message: 'Você não possui esta carta especial.' };
-}
-
-function giveSpecialCard(playerId) {
-    const card = getSpecialCard();
-    const playerIndex = gameState.players.indexOf(playerId);
-    if (card.type === 'Debug') {
-        gameState.playersSpecialCards[playerIndex].debug++;
-    } else if (card.type === 'LoopInfinito') {
-        // Loop infinito é uma penalidade, não um item. Ele é aplicado imediatamente.
-        // Vamos aplicar na lógica do jogador.
-        return { type: 'penalty', effect: 'skip', card: card };
-    } else if (card.type === 'Avanco') {
-        return { type: 'item', effect: 'advance', card: card };
-    }
-    return { type: 'item', effect: 'none', card: card };
 }
 
 function movePlayer(playerId, diceRoll, correctAnswer, isSpecialCardAdvance = false) {
@@ -189,9 +164,6 @@ function movePlayer(playerId, diceRoll, correctAnswer, isSpecialCardAdvance = fa
     }
     
     let newPosition = gameState.playersPositions[playerIndex];
-    let card = null;
-    let specialCardEffect = null;
-    
     if (isSpecialCardAdvance) {
         newPosition += 3;
         if (newPosition > gameState.boardSize) newPosition = gameState.boardSize;
@@ -215,46 +187,35 @@ function movePlayer(playerId, diceRoll, correctAnswer, isSpecialCardAdvance = fa
     
     newPosition += diceRoll;
     if (newPosition > gameState.boardSize) newPosition = gameState.boardSize;
-    let landedOnSpecial = false;
-    let specialTileType = null;
-    
-    // Simular casas especiais no tabuleiro
-    // Vamos criar uma lógica simples para casas especiais baseada na posição
     
     const specialTiles = {
-        5: { type: 'special', name: 'LoopInfinito', effect: 'skip' },
-        12: { type: 'special', name: 'Debug', effect: 'debug' },
-        19: { type: 'special', name: 'Avanco', effect: 'advance' },
-        25: { type: 'special', name: 'AntiLoop', effect: 'antiLoop' },
-        27: { type: 'special', name: 'LoopInfinito', effect: 'skip' }
+        5: { name: 'LoopInfinito', effect: 'skip' },
+        12: { name: 'Debug', effect: 'debug' },
+        19: { name: 'Avanco', effect: 'advance' },
+        25: { name: 'AntiLoop', effect: 'antiLoop' },
+        27: { name: 'LoopInfinito', effect: 'skip' }
     };
     
     if (specialTiles[newPosition]) {
-        landedOnSpecial = true;
-        specialTileType = specialTiles[newPosition].name;
-        if (specialTiles[newPosition].effect === 'skip') {
+        const tile = specialTiles[newPosition];
+        if (tile.effect === 'skip') {
             gameState.playersSkipped[playerIndex] = true;
-        } else if (specialTiles[newPosition].effect === 'debug') {
+        } else if (tile.effect === 'debug') {
             gameState.playersSpecialCards[playerIndex].debug++;
-        } else if (specialTiles[newPosition].effect === 'antiLoop') {
+        } else if (tile.effect === 'antiLoop') {
             gameState.playersSpecialCards[playerIndex].antiLoop++;
-        } else if (specialTiles[newPosition].effect === 'advance') {
-            // Avanço imediato de +3
+        } else if (tile.effect === 'advance') {
             newPosition = Math.min(gameState.boardSize, newPosition + 3);
             if (newPosition === gameState.boardSize) {
                 gameState.gameActive = false;
                 gameState.winner = playerId;
-                return { success: true, newPosition, gameEnded: true, winner: playerId, card: null, specialTile: specialTileType };
+                return { success: true, newPosition, gameEnded: true, winner: playerId, card: null, specialTile: tile.name };
             }
         }
         gameState.playersPositions[playerIndex] = newPosition;
-        let phase = 1;
-        if (newPosition <= 8) phase = 1;
-        else if (newPosition <= 16) phase = 2;
-        else if (newPosition <= 24) phase = 3;
-        else phase = 4;
-        card = getCardForPhase(phase);
-        return { success: true, newPosition, card, specialTile: specialTileType, phase: phase };
+        let phase = newPosition <= 8 ? 1 : newPosition <= 16 ? 2 : newPosition <= 24 ? 3 : 4;
+        const card = getCardForPhase(phase);
+        return { success: true, newPosition, card, specialTile: tile.name, phase };
     }
     
     gameState.playersPositions[playerIndex] = newPosition;
@@ -266,20 +227,14 @@ function movePlayer(playerId, diceRoll, correctAnswer, isSpecialCardAdvance = fa
         gameEnded = true;
         winner = playerId;
     }
-    let phase = 1;
-    if (newPosition <= 8) phase = 1;
-    else if (newPosition <= 16) phase = 2;
-    else if (newPosition <= 24) phase = 3;
-    else phase = 4;
-    
-    card = getCardForPhase(phase);
-    return { success: true, newPosition, gameEnded, winner, card, phase: phase };
+    let phase = newPosition <= 8 ? 1 : newPosition <= 16 ? 2 : newPosition <= 24 ? 3 : 4;
+    const card = getCardForPhase(phase);
+    return { success: true, newPosition, gameEnded, winner, card, phase };
 }
 
 function nextTurn() {
     if (!gameState.gameActive) return null;
-    let nextPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
-    gameState.currentPlayerIndex = nextPlayerIndex;
+    gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
     return {
         currentPlayer: gameState.players[gameState.currentPlayerIndex],
         currentPlayerIndex: gameState.currentPlayerIndex,
@@ -314,15 +269,10 @@ io.on('connection', (socket) => {
     socket.on('move-player', (data) => {
         const { playerId, diceRoll, answer, challengeAnswer, specialCardUsed } = data;
         let isCorrect = false;
-        
-        // Validação de resposta
         if (answer && challengeAnswer) {
-            // Lógica para verificar resposta do desafio
             isCorrect = answer.toLowerCase().trim() === challengeAnswer.toLowerCase().trim();
         } else if (specialCardUsed) {
-            isCorrect = true; // Carta especial não precisa de validação de resposta
-        } else {
-            isCorrect = false;
+            isCorrect = true;
         }
         
         const moveResult = movePlayer(playerId, diceRoll, isCorrect, specialCardUsed);
@@ -349,14 +299,6 @@ io.on('connection', (socket) => {
             else if (moveResult.specialTile === 'AntiLoop') specialMessage = `🛡️ ${specialMessage} Você ganhou uma carta Anti-Loop!`;
             else if (moveResult.specialTile === 'Avanco') specialMessage = `⏩ ${specialMessage} Avance +3 casas!`;
             io.emit('special-tile', { playerId, message: specialMessage, tileType: moveResult.specialTile });
-            
-            if (moveResult.specialTile === 'Avanco') {
-                // Avanço já foi aplicado em movePlayer, então apenas notificamos
-            } else if (moveResult.specialTile === 'Debug') {
-                // Debug card already added
-            } else if (moveResult.specialTile === 'AntiLoop') {
-                // AntiLoop card already added
-            }
         }
         
         const turnUpdate = nextTurn();
@@ -376,7 +318,7 @@ io.on('connection', (socket) => {
 
 // --- Inicialização do Servidor ---
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-    console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
     console.log(`📡 Socket.IO pronto para conexões.`);
 });
