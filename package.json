@@ -4,6 +4,7 @@
   "description": "Servidor multiplayer para o jogo Loop Infinito - Missão While",
   "main": "server.js",
   "scripts": {
+    "build": "mkdir -p public && cp index.html regras.html public/",
     "start": "node server.js"
   },
   "dependencies": {
