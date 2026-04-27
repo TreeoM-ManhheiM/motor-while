@@ -1,7 +1,7 @@
 {
   "name": "missao-while-server",
   "version": "1.0.0",
-  "description": "Servidor multiplayer para Loop Infinito - Missão While",
+  "description": "Servidor multiplayer com 30 missões de programação - Loop Infinito",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
