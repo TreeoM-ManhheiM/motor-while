@@ -1,28 +1,22 @@
 const express = require('express');
-const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
 
-// Servir arquivos estáticos da pasta 'missao_while'
-app.use(express.static(path.join(__dirname, 'missao_while')));
-
-// Rota raiz
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'missao_while', 'index.html'));
-});
-
-// Rota para regras (opcional)
-app.get('/regras', (req, res) => {
-    res.sendFile(path.join(__dirname, 'missao_while', 'regras.html'));
+// Configuração de CORS para aceitar conexões do seu domínio
+const io = new Server(server, {
+    cors: {
+        origin: "https://9od.com.br",  // substitua pelo seu domínio real
+        methods: ["GET", "POST"],
+        credentials: true
+    }
 });
 
 const rooms = new Map();
 
-// ==================== 30 MISSÕES ====================
+// ==================== 30 MISSÕES COMPLETAS ====================
 const MISSOES = [
     { id:0, titulo:"1. Contagem regressiva", historia:"Use um loop `while` para exibir os números de 5 até 1 (decrescente).", codigoEsperado:["contador = 5","while contador > 0:","    print(contador)","    contador -= 1"] },
     { id:1, titulo:"2. Soma até 100", historia:"Some números de 1 até atingir ou ultrapassar 100. Exiba a soma final.", codigoEsperado:["soma = 0","numero = 1","while soma < 100:","    soma += numero","    numero += 1","print(soma)"] },
@@ -204,5 +198,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`🚀 Servidor Socket.IO rodando na porta ${PORT}`);
 });
