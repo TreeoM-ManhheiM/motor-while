@@ -8,7 +8,7 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 const rooms = new Map();
 
-// ==================== 30 MISSÕES COMPLETAS (SEM DICAS NO ENVIO, MAS O CAMPO DICA EXISTE PARA POSSÍVEL USO FUTURO) ====================
+// ==================== 30 MISSÕES COMPLETAS ====================
 const MISSOES = [
     { id:0, titulo:"1. Contagem regressiva", historia:"Use um loop `while` para exibir os números de 5 até 1 (decrescente).", codigoEsperado:["contador = 5","while contador > 0:","    print(contador)","    contador -= 1"] },
     { id:1, titulo:"2. Soma até 100", historia:"Some números de 1 até atingir ou ultrapassar 100. Exiba a soma final.", codigoEsperado:["soma = 0","numero = 1","while soma < 100:","    soma += numero","    numero += 1","print(soma)"] },
@@ -97,7 +97,7 @@ io.on('connection', (socket) => {
         const state = roomObj.gameState;
         const idx = state.players.indexOf(playerId);
         if (idx !== state.currentPlayerIndex) { socket.emit('error-msg', 'Não é sua vez'); return; }
-        const dice = Math.floor(Math.random() * 6) + 1;
+        const dice = Math.floor(Math.random() * 6) + 1; // Dado normal 1-6
         let newPos = state.playersPositions[idx] + dice;
         if (newPos > state.boardSize) newPos = state.boardSize;
         state.playersPositions[idx] = newPos;
@@ -145,7 +145,7 @@ io.on('connection', (socket) => {
             mensagem = '❌ Código incorreto! Voltou uma casa.';
             io.to(room).emit('move-result', { playerId, success: false, newPosition: newPos, positions: state.playersPositions, message: mensagem });
         }
-        // Passa o turno para o próximo jogador (sempre após a resposta)
+        // Passa o turno para o próximo jogador
         state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
         io.to(room).emit('turn-update', { currentPlayer: state.players[state.currentPlayerIndex], positions: state.playersPositions });
     });
@@ -172,5 +172,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor rodando na porta ${PORT} com 30 missões, dado e turnos corrigidos`);
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
 });
