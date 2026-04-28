@@ -7,17 +7,22 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// Servir arquivos estáticos da pasta 'public'
-app.use(express.static(path.join(__dirname, 'public')));
+// Servir arquivos estáticos da pasta 'missao_while'
+app.use(express.static(path.join(__dirname, 'missao_while')));
 
-// Rota para a raiz (fallback para o index.html)
+// Rota raiz
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'missao_while', 'index.html'));
+});
+
+// Rota para regras (opcional)
+app.get('/regras', (req, res) => {
+    res.sendFile(path.join(__dirname, 'missao_while', 'regras.html'));
 });
 
 const rooms = new Map();
 
-// ==================== 30 MISSÕES COMPLETAS ====================
+// ==================== 30 MISSÕES ====================
 const MISSOES = [
     { id:0, titulo:"1. Contagem regressiva", historia:"Use um loop `while` para exibir os números de 5 até 1 (decrescente).", codigoEsperado:["contador = 5","while contador > 0:","    print(contador)","    contador -= 1"] },
     { id:1, titulo:"2. Soma até 100", historia:"Some números de 1 até atingir ou ultrapassar 100. Exiba a soma final.", codigoEsperado:["soma = 0","numero = 1","while soma < 100:","    soma += numero","    numero += 1","print(soma)"] },
@@ -108,9 +113,7 @@ io.on('connection', (socket) => {
         const idx = state.players.indexOf(playerId);
         if (idx !== state.currentPlayerIndex) { socket.emit('error-msg', 'Não é sua vez'); return; }
         
-        // Guarda posição anterior
         state.playersPreviousPositions[idx] = state.playersPositions[idx];
-        
         const dice = Math.floor(Math.random() * 6) + 1;
         let newPos = state.playersPositions[idx] + dice;
         if (newPos > state.boardSize) newPos = state.boardSize;
@@ -147,12 +150,10 @@ io.on('connection', (socket) => {
         let newPos;
 
         if (acertou) {
-            // Fica na mesma casa
             newPos = state.playersPositions[idx];
             mensagem = `✅ Código correto! Você permanece na casa ${newPos}.`;
             io.to(room).emit('move-result', { playerId, success: true, newPosition: newPos, positions: state.playersPositions, message: mensagem });
         } else {
-            // Volta para posição anterior
             const previousPos = state.playersPreviousPositions[idx];
             state.playersPositions[idx] = previousPos;
             newPos = previousPos;
@@ -160,12 +161,10 @@ io.on('connection', (socket) => {
             io.to(room).emit('move-result', { playerId, success: false, newPosition: newPos, positions: state.playersPositions, message: mensagem });
         }
 
-        // Passa o turno
         state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
         io.to(room).emit('turn-update', { currentPlayer: state.players[state.currentPlayerIndex], positions: state.playersPositions });
     });
 
-    // NOVO: tratamento de timeout
     socket.on('timeout', ({ room, playerId, posicao }) => {
         const roomObj = rooms.get(room);
         if (!roomObj || !roomObj.gameState) return;
@@ -174,13 +173,11 @@ io.on('connection', (socket) => {
         if (idx !== state.currentPlayerIndex) return;
         if (!state.gameActive) return;
 
-        // Volta para posição anterior
         const previousPos = state.playersPreviousPositions[idx];
         state.playersPositions[idx] = previousPos;
         const mensagem = `⏰ Tempo esgotado! Você volta para a casa ${previousPos}.`;
         io.to(room).emit('move-result', { playerId, success: false, newPosition: previousPos, positions: state.playersPositions, message: mensagem });
 
-        // Passa o turno
         state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
         io.to(room).emit('turn-update', { currentPlayer: state.players[state.currentPlayerIndex], positions: state.playersPositions });
     });
@@ -207,5 +204,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor rodando na porta ${PORT} com regra: acerto fica na casa, erro/timeout volta para posição anterior`);
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
 });
