@@ -1,7 +1,7 @@
 {
   "name": "missao-while-server",
   "version": "1.0.0",
-  "description": "Servidor multiplayer com dado e 30 missões de programação",
+  "description": "Servidor multiplayer com dado e 30 missões - sem dicas",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
