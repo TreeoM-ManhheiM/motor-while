@@ -50,7 +50,7 @@ function createGameState(playersNames) {
         currentPlayerIndex: 0,
         boardSize: 30,
         playersPositions: new Array(playersNames.length).fill(0),
-        playersPreviousPositions: new Array(playersNames.length).fill(0), // guarda posição antes do dado
+        playersPreviousPositions: new Array(playersNames.length).fill(0),
         gameActive: true,
         winner: null
     };
@@ -102,7 +102,7 @@ io.on('connection', (socket) => {
         // Guarda posição anterior
         state.playersPreviousPositions[idx] = state.playersPositions[idx];
         
-        const dice = Math.floor(Math.random() * 6) + 1; // Dado normal 1-6
+        const dice = Math.floor(Math.random() * 6) + 1;
         let newPos = state.playersPositions[idx] + dice;
         if (newPos > state.boardSize) newPos = state.boardSize;
         state.playersPositions[idx] = newPos;
@@ -138,12 +138,12 @@ io.on('connection', (socket) => {
         let newPos;
 
         if (acertou) {
-            // ACERTOU: permanece na casa atual (não avança)
+            // Fica na mesma casa
             newPos = state.playersPositions[idx];
             mensagem = `✅ Código correto! Você permanece na casa ${newPos}.`;
             io.to(room).emit('move-result', { playerId, success: true, newPosition: newPos, positions: state.playersPositions, message: mensagem });
         } else {
-            // ERROU: volta para a posição anterior ao dado
+            // Volta para posição anterior
             const previousPos = state.playersPreviousPositions[idx];
             state.playersPositions[idx] = previousPos;
             newPos = previousPos;
@@ -151,7 +151,27 @@ io.on('connection', (socket) => {
             io.to(room).emit('move-result', { playerId, success: false, newPosition: newPos, positions: state.playersPositions, message: mensagem });
         }
 
-        // Passa o turno para o próximo jogador
+        // Passa o turno
+        state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
+        io.to(room).emit('turn-update', { currentPlayer: state.players[state.currentPlayerIndex], positions: state.playersPositions });
+    });
+
+    // NOVO: tratamento de timeout
+    socket.on('timeout', ({ room, playerId, posicao }) => {
+        const roomObj = rooms.get(room);
+        if (!roomObj || !roomObj.gameState) return;
+        const state = roomObj.gameState;
+        const idx = state.players.indexOf(playerId);
+        if (idx !== state.currentPlayerIndex) return;
+        if (!state.gameActive) return;
+
+        // Volta para posição anterior
+        const previousPos = state.playersPreviousPositions[idx];
+        state.playersPositions[idx] = previousPos;
+        const mensagem = `⏰ Tempo esgotado! Você volta para a casa ${previousPos}.`;
+        io.to(room).emit('move-result', { playerId, success: false, newPosition: previousPos, positions: state.playersPositions, message: mensagem });
+
+        // Passa o turno
         state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
         io.to(room).emit('turn-update', { currentPlayer: state.players[state.currentPlayerIndex], positions: state.playersPositions });
     });
@@ -178,5 +198,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor rodando na porta ${PORT} com regra: acerto permanece na casa, erro volta posição anterior ao dado`);
+    console.log(`🚀 Servidor rodando na porta ${PORT} com regra: acerto fica na casa, erro/timeout volta para posição anterior`);
 });
